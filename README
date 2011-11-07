@@ -1,0 +1,10 @@
+jira2bugzilla.rb
+
+Download JIRA issues and attachments and transform them into Bugzilla-compatible XML files.
+
+A couple notes:
+
+* This script is not going to "just work". It's a template.
+* No notion of QA contact. Leave it off so that a per-project/component default is used.
+* Ensure all products and components are available in the Bugzilla instance. If either are missing, the import script will use the default product and component.
+* No severity in JIRA, so assign "Sev2".
