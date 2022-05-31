@@ -14,6 +14,8 @@ require 'nokogiri'
 require 'open-uri'
 require 'time'
 require 'base64'
+require 'io/console'
+require "erb"
 
 class String
   def sanitize
@@ -21,12 +23,22 @@ class String
   end
 end
 
+
 # Extract JIRA issues. (Figure out how many issues to include.)
+dirname = "XTR-Bugs/"
+dirnameConv = "XTR-Converted/"
+
+# Get user and password and store it in memory, no need to write it in file!
+user = STDIN.gets.chomp()
+pwd = STDIN.getpass("Password:")
+
+Dir.mkdir(dirname) if !Dir.exists?(dirname)
 (1..1000).each do |i|
   # Use curl with credentials to extract each JIRA issue's XML.
-  xml = %x[curl -u username:password https://jira.example.com/si/jira.issueviews:issue-xml/BUG-#{i}/BUG-#{i}.xml]
+  # Use -x option when a HTTP proxy is used
+  xml = %x[curl -u #{user}:#{pwd} https://jira.example.com/si/jira.issueviews:issue-xml/XTR-#{i}/XTR-#{i}.xml]
   # Save the XML to a file.
-  f=File.new("BUG-#{i}.xml","w")
+  f=File.new(dirname + "/XTR-#{i}.xml","w")
   f.write(xml)
   f.close
 end
@@ -36,19 +48,16 @@ Dir.mkdir("attachments") if !Dir.exists?("attachments")
 (1..1000).each do |i|
   puts i
   # Open the JIRA issue.
-  doc = Nokogiri::XML(open(File.expand_path("BUG-#{i}.xml")))
+  doc = Nokogiri::XML(open(File.expand_path(dirname + "XTR-#{i}.xml")))
   # Find all the attachment references.
   doc.xpath("//attachment").each do |attachment|
     # Get the attachment ID and file name.
     attachment_id = attachment.attributes["id"].value
     file_name = attachment.attributes["name"].value
+    file_name_encoded = ERB::Util.url_encode(file_name)
     # Get the attachment contents using curl.
-    contents = %x[curl -u username:password https://jira.example.com/secure/attachment/#{attachment_id}/#{file_name}]
-    # Save the attachment.
     Dir.mkdir("attachments/BUG-#{i}") if !Dir.exists?("attachments/BUG-#{i}")
-    f=File.new("attachments/BUG-#{i}/#{attachment_id}_#{file_name}","w")
-    f.write(contents)
-    f.close
+    contents = %x[curl -o "attachments/BUG-#{i}/#{attachment_id}_#{file_name}" -u #{user}:#{pwd} https://jira.example.com/secure/attachment/#{attachment_id}/#{file_name_encoded}]
   end
 end
 
@@ -99,7 +108,7 @@ SKIP_VERSIONS = ["Example 2.0"]
 # Loop through all the known issues.
 (1..1000).each do |i|
   # Open each JIRA issue.
-  doc = Nokogiri::XML(open(File.expand_path("BUG-#{i}.xml")))
+  doc = Nokogiri::XML(open(File.expand_path(dirname + "XTR-#{i}.xml")))
   puts "JIRA #{i}"
   # Skip missing issues.
   next if doc.xpath("//h1[contains(.,'Could not find issue with issue key')]").count > 0
@@ -151,7 +160,8 @@ SKIP_VERSIONS = ["Example 2.0"]
     file_name = attachment.attributes["name"].value
     author = PEOPLE_EMAIL[attachment.attributes["author"].value.downcase]
     created = Time.parse(attachment.attributes["created"].value).strftime("%Y-%m-%d %H:%M:%S")
-    attachment_path = "BUG/#{bug_id}/#{attachment_id}_#{file_name}"
+    # attachment_path = "BUG/#{bug_id}/#{attachment_id}_#{file_name}"
+    attachment_path = "attachments/BUG-#{i}/#{attachment_id}_#{file_name}"
     (puts "=> MISSING FILE #{attachment_path}"; next) if !File.exists?(attachment_path)
     encoded_file = Base64.encode64(IO.read("#{attachment_path}"))
     attachments << "<attachment isobsolete='0' ispatch='0' isprivate='0'>
@@ -198,7 +208,9 @@ SKIP_VERSIONS = ["Example 2.0"]
 "
 
   # Write new file.
-  f=File.new("BUG-#{"%04d" % i}.xml","w")
+  # f=File.new("BUG-#{"%04d" % i}.xml","w")
+  Dir.mkdir(dirnameConv) if !Dir.exists?(dirnameConv)
+  f=File.new(dirnameConv + "BUG-#{"%04d" % i}.xml","w")
   f.write(bug_text)
   f.close
 end
